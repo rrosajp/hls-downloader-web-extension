@@ -12,6 +12,13 @@ const SettingsModule = () => {
     onSaveDialogToggle,
     saveDialog,
     concurrency,
+    preferredAudioLanguage,
+    onSetPreferredAudioLanguage,
+    maxActiveDownloads,
+    activeDownloadsUnlimited,
+    onActiveDownloadsDecrease,
+    onActiveDownloadsIncrease,
+    onActiveDownloadsUnlimited,
   } = useSettingsController();
 
   return (
@@ -24,6 +31,13 @@ const SettingsModule = () => {
       onConcurrencyDecrease={onConcurrencyDecrease}
       onConcurrencyIncrease={onConcurrencyIncrease}
       concurrency={concurrency}
+      preferredAudioLanguage={preferredAudioLanguage}
+      onSetPreferredAudioLanguage={onSetPreferredAudioLanguage}
+      maxActiveDownloads={maxActiveDownloads}
+      activeDownloadsUnlimited={activeDownloadsUnlimited}
+      onActiveDownloadsDecrease={onActiveDownloadsDecrease}
+      onActiveDownloadsIncrease={onActiveDownloadsIncrease}
+      onActiveDownloadsUnlimited={onActiveDownloadsUnlimited}
     ></SettingsView>
   );
 };

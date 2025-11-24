@@ -9,6 +9,8 @@ interface ReturnType {
   filter: string;
   setCurrentJobId: (jobId?: string) => void;
   setFilter: (filter: string) => void;
+  hasJobs: boolean;
+  showFilterInput: boolean;
 }
 
 const jobsFilter =
@@ -39,6 +41,7 @@ const useDownloadsController = (): ReturnType => {
     .filter(jobsFilter(filter));
 
   jobs.sort((a, b) => b!.createdAt - a!.createdAt);
+  const hasJobs = jobs.length > 0;
 
   return {
     jobs,
@@ -46,6 +49,8 @@ const useDownloadsController = (): ReturnType => {
     setCurrentJobId,
     filter,
     setFilter,
+    hasJobs,
+    showFilterInput: hasJobs,
   };
 };
 

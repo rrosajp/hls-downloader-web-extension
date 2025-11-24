@@ -13,4 +13,14 @@ describe("deleteJobEpic", () => {
     expect(fs.deleteBucket).toHaveBeenCalledWith("1");
     expect(result).toEqual(jobsSlice.actions.deleteSuccess({ jobId: "1" }));
   });
+
+  it("emits success even if delete bucket fails", async () => {
+    const fs = { deleteBucket: vi.fn().mockRejectedValue(new Error("fail")) };
+    const action$ = of(jobsSlice.actions.delete({ jobId: "1" }));
+    const result = await firstValueFrom(
+      deleteJobEpic(action$, {} as any, { fs } as any)
+    );
+    expect(fs.deleteBucket).toHaveBeenCalledWith("1");
+    expect(result).toEqual(jobsSlice.actions.deleteSuccess({ jobId: "1" }));
+  });
 });

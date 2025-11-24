@@ -1,6 +1,6 @@
 import { Epic } from "redux-observable";
-import { from, of } from "rxjs";
-import { filter, map, mergeMap, takeUntil } from "rxjs/operators";
+import { EMPTY, from, of } from "rxjs";
+import { catchError, filter, map, mergeMap, takeUntil } from "rxjs/operators";
 import { RootAction, RootState } from "../store/root-reducer";
 import { jobsSlice } from "../store/slices";
 import { Dependencies } from "../services";
@@ -18,9 +18,14 @@ export const downloadJobEpic: Epic<
   Dependencies
 > = (action$, store$, { fs, loader, decryptor }) =>
   action$.pipe(
-    filter(jobsSlice.actions.add.match),
-    map((action) => action.payload.job),
-    mergeMap(({ videoFragments, audioFragments, id }) => {
+    filter(jobsSlice.actions.download.match),
+    map((action) => action.payload.jobId),
+    mergeMap((jobId) => {
+      const job = store$.value.jobs.jobs[jobId];
+      if (!job) {
+        return EMPTY;
+      }
+      const { videoFragments, audioFragments } = job;
       const fragments = videoFragments.concat(
         audioFragments.map((fragment) => ({
           ...fragment,
@@ -29,16 +34,16 @@ export const downloadJobEpic: Epic<
       );
       return from(
         createBucketFactory(fs)(
-          id,
+          jobId,
           videoFragments.length,
           audioFragments.length
         ).then(() => ({
           fragments,
-          id,
+          jobId,
         }))
       );
     }),
-    mergeMap(({ fragments, id }) =>
+    mergeMap(({ fragments, jobId }) =>
       from(fragments).pipe(
         mergeMap(
           (fragment) =>
@@ -49,13 +54,13 @@ export const downloadJobEpic: Epic<
               ).then((data) => ({
                 fragment,
                 data,
-                id,
+                jobId,
               }))
             ),
 
           store$.value.config.concurrency
         ),
-        mergeMap(({ data, fragment, id }) =>
+        mergeMap(({ data, fragment, jobId }) =>
           decryptSingleFragmentFactory(loader, decryptor)(
             fragment.key,
             data,
@@ -63,25 +68,35 @@ export const downloadJobEpic: Epic<
           ).then((data) => ({
             fragment,
             data,
-            id,
+            jobId,
           }))
         ),
-        mergeMap(({ data, id, fragment }) =>
-          writeToBucketFactory(fs)(id, fragment.index, data).then(() => ({
-            id,
+        mergeMap(({ data, jobId, fragment }) =>
+          writeToBucketFactory(fs)(jobId, fragment.index, data).then(() => ({
+            jobId,
           }))
         ),
-        mergeMap(({ id }) =>
+        mergeMap(({ jobId }) =>
           of(
             jobsSlice.actions.incDownloadStatus({
-              jobId: id,
+              jobId,
             })
           )
         ),
         takeUntil(
           action$
             .pipe(filter(jobsSlice.actions.cancel.match))
-            .pipe(filter((action) => action.payload.jobId === id))
+            .pipe(filter((action) => action.payload.jobId === jobId))
+        ),
+        catchError((error: unknown) =>
+          of(
+            jobsSlice.actions.downloadFailed({
+              jobId,
+              message:
+                (error as Error)?.message ||
+                "Download failed during fragment processing",
+            })
+          )
         )
       )
     )

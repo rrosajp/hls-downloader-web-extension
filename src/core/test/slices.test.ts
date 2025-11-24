@@ -26,6 +26,11 @@ describe("store slices", () => {
       configSlice.actions.setFetchAttempts({ fetchAttempts: 10 })
     );
     expect(state.fetchAttempts).toBe(10);
+    state = configSlice.reducer(
+      state,
+      configSlice.actions.setMaxActiveDownloads({ maxActiveDownloads: 3 })
+    );
+    expect(state.maxActiveDownloads).toBe(3);
   });
 
   it("jobs slice reducers", () => {

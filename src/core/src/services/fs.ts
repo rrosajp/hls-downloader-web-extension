@@ -7,6 +7,13 @@ export interface IFS {
     audioLength: number
   ): Promise<void>;
   deleteBucket(id: string): Promise<void>;
+  setSubtitleText(
+    id: string,
+    subtitle: { text: string; language?: string; name?: string }
+  ): Promise<void>;
+  getSubtitleText(
+    id: string
+  ): Promise<{ text: string; language?: string; name?: string } | undefined>;
   saveAs(
     path: string,
     link: string,

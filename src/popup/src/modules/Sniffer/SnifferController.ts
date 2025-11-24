@@ -10,11 +10,18 @@ import { useDispatch, useSelector } from "react-redux";
 interface ReturnType {
   playlists: Playlist[];
   currentPlaylistId: string | undefined;
+  currentPlaylist: Playlist | null;
+  currentPlaylistStatus: PlaylistStatus | null;
   filter: string;
   clearPlaylists: () => void;
   setFilter: (filter: string) => void;
   setCurrentPlaylistId: (playlistId?: string) => void;
   copyPlaylistsToClipboard: () => void;
+  directURI: string;
+  setDirectURI: (uri: string) => void;
+  addDirectPlaylist: () => void;
+  expandedPlaylists: string[];
+  toggleExpandedPlaylist: (id: string) => void;
 }
 
 const playlistFilter =
@@ -45,6 +52,8 @@ const useSnifferController = (): ReturnType => {
     string | undefined
   >(undefined);
   const [filter, setFilter] = useState("");
+  const [directURI, setDirectURI] = useState("");
+  const [expandedPlaylists, setExpandedPlaylists] = useState<string[]>([]);
   const dispatch = useDispatch();
   const playlistsRecord = useSelector<
     RootState,
@@ -60,14 +69,35 @@ const useSnifferController = (): ReturnType => {
     dispatch(playlistsSlice.actions.clearPlaylists());
   }
 
+  function addDirectPlaylist() {
+    if (!directURI) return;
+    dispatch(
+      playlistsSlice.actions.addPlaylist({
+        id: directURI,
+        uri: directURI,
+        createdAt: Date.now(),
+        initiator: "Direct",
+      })
+    );
+    setCurrentPlaylistId(directURI);
+  }
+
   const playlists = Object.values(playlistsRecord)
     .filter(isPlaylist)
     .filter(
-      (playlist) => playlistsStatusRecord[playlist.id]?.status === "ready"
+      (playlist) =>
+        playlistsStatusRecord[playlist.id]?.status === "ready" ||
+        playlist.initiator === "Direct"
     )
     .filter(playlistFilter(filter));
 
   playlists.sort((a, b) => b.createdAt - a.createdAt);
+
+  function toggleExpandedPlaylist(id: string) {
+    setExpandedPlaylists((prev) =>
+      prev.includes(id) ? prev.filter((pid) => pid !== id) : [...prev, id]
+    );
+  }
 
   function copyPlaylistsToClipboard() {
     const playlistUris = playlists.map((p) => p.uri).join("\n");
@@ -75,6 +105,12 @@ const useSnifferController = (): ReturnType => {
   }
 
   return {
+    currentPlaylist: currentPlaylistId
+      ? playlistsRecord[currentPlaylistId] ?? null
+      : null,
+    currentPlaylistStatus: currentPlaylistId
+      ? playlistsStatusRecord[currentPlaylistId] ?? null
+      : null,
     filter,
     clearPlaylists,
     setFilter,
@@ -82,6 +118,11 @@ const useSnifferController = (): ReturnType => {
     playlists,
     currentPlaylistId,
     copyPlaylistsToClipboard,
+    directURI,
+    setDirectURI,
+    addDirectPlaylist,
+    expandedPlaylists,
+    toggleExpandedPlaylist,
   };
 };
 

@@ -27,6 +27,10 @@ export interface IFinishJobDownloadPayload {
 export interface IIncJobDownloadStatusPayload {
   jobId: string;
 }
+export interface IDownloadJobFailedPayload {
+  jobId: string;
+  message: string;
+}
 export interface ISaveAsJobPayload {
   jobId: string;
 }
@@ -44,6 +48,7 @@ interface IJobsReducers {
   download: CaseReducer<IJobsState, PayloadAction<IDownloadJobPayload>>;
   clear: CaseReducer<IJobsState, PayloadAction<any>>;
   add: CaseReducer<IJobsState, PayloadAction<IAddJobPayload>>;
+  queue: CaseReducer<IJobsState, PayloadAction<IDownloadJobPayload>>;
   cancel: CaseReducer<IJobsState, PayloadAction<IDeleteJobPayload>>;
   delete: CaseReducer<IJobsState, PayloadAction<IDeleteJobPayload>>;
   deleteSuccess: CaseReducer<IJobsState, PayloadAction<IDeleteJobPayload>>;
@@ -54,6 +59,10 @@ interface IJobsReducers {
   incDownloadStatus: CaseReducer<
     IJobsState,
     PayloadAction<IIncJobDownloadStatusPayload>
+  >;
+  downloadFailed: CaseReducer<
+    IJobsState,
+    PayloadAction<IDownloadJobFailedPayload>
   >;
   saveAs: CaseReducer<IJobsState, PayloadAction<ISaveAsJobPayload>>;
   saveAsSuccess: CaseReducer<
@@ -76,7 +85,25 @@ export const jobsSlice: Slice<IJobsState, IJobsReducers, "jobs"> = createSlice({
   name: "jobs",
   initialState: initialJobsState,
   reducers: {
-    download(_state, _action: PayloadAction<IDownloadJobPayload>) {},
+    download(state, action: PayloadAction<IDownloadJobPayload>) {
+      const { jobId } = action.payload;
+      const job = state.jobs[jobId];
+      if (!job) {
+        return;
+      }
+      const total = job.videoFragments.length + job.audioFragments.length;
+      state.jobsStatus[jobId] = {
+        ...(state.jobsStatus[jobId] ?? {
+          total,
+        }),
+        status: "downloading",
+        total,
+        done: 0,
+        saveProgress: 0,
+        saveMessage: undefined,
+        errorMessage: undefined,
+      };
+    },
     clear(state) {
       state.jobs = initialJobsState.jobs;
       state.jobsStatus = initialJobsState.jobsStatus;
@@ -87,8 +114,27 @@ export const jobsSlice: Slice<IJobsState, IJobsReducers, "jobs"> = createSlice({
       state.jobsStatus[job.id] = {
         done: 0,
         total: job.videoFragments.length + job.audioFragments.length,
-        status: "downloading",
+        status: "queued",
         saveProgress: 0,
+      };
+    },
+    queue(state, action: PayloadAction<IDownloadJobPayload>) {
+      const { jobId } = action.payload;
+      const job = state.jobs[jobId];
+      if (!job) {
+        return;
+      }
+      const total = job.videoFragments.length + job.audioFragments.length;
+      state.jobsStatus[jobId] = {
+        ...(state.jobsStatus[jobId] ?? {
+          total,
+        }),
+        status: "queued",
+        total,
+        done: 0,
+        saveProgress: 0,
+        saveMessage: undefined,
+        errorMessage: undefined,
       };
     },
     cancel(_state, _action: PayloadAction<IDeleteJobPayload>) {},
@@ -104,6 +150,19 @@ export const jobsSlice: Slice<IJobsState, IJobsReducers, "jobs"> = createSlice({
 
       jobStatus.done = jobStatus.total;
       jobStatus.status = "ready";
+    },
+    downloadFailed(state, action: PayloadAction<IDownloadJobFailedPayload>) {
+      const { jobId, message } = action.payload;
+      const jobStatus =
+        state.jobsStatus[jobId] ||
+        (state.jobsStatus[jobId] = {
+          status: "error",
+          total: 0,
+          done: 0,
+          saveProgress: 0,
+        });
+      jobStatus.status = "error";
+      jobStatus.errorMessage = message;
     },
     incDownloadStatus(
       state,

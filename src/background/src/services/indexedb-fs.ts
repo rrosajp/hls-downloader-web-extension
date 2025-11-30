@@ -10,12 +10,14 @@ import { Bucket, IFS } from "@hls-downloader/core/lib/services";
 import browser from "webextension-polyfill";
 import filenamify from "filenamify";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile } from "@ffmpeg/util";
+import { muxStreams } from "./ffmpeg-muxer";
 
 const buckets: Record<string, IndexedDBBucket> = {};
 const chromeApi = (globalThis as any).chrome;
 const browserApi = (browser as any) ?? (globalThis as any).browser ?? chromeApi;
 const BUCKET_META_KEY = "bucketMeta";
+const SUBTITLE_DB_NAME = "subtitles";
+const SUBTITLE_STORE_NAME = "subtitles";
 
 type BucketMeta = {
   videoLength: number;
@@ -72,6 +74,47 @@ interface ChunksDB extends DBSchema {
   };
 }
 
+type SubtitleRecord = {
+  id: string;
+  text: string;
+  language?: string;
+  name?: string;
+};
+
+interface SubtitlesDB extends DBSchema {
+  subtitles: {
+    key: string;
+    value: SubtitleRecord;
+  };
+}
+
+let subtitlesDbPromise: Promise<IDBPDatabase<SubtitlesDB>> | null = null;
+
+async function getSubtitlesDb(): Promise<IDBPDatabase<SubtitlesDB>> {
+  if (!subtitlesDbPromise) {
+    subtitlesDbPromise = openDB<SubtitlesDB>(SUBTITLE_DB_NAME, 1, {
+      upgrade(db) {
+        db.createObjectStore(SUBTITLE_STORE_NAME, { keyPath: "id" });
+      },
+    });
+  }
+  return subtitlesDbPromise;
+}
+
+async function deleteSubtitlesDb() {
+  if (subtitlesDbPromise) {
+    try {
+      const db = await subtitlesDbPromise;
+      db.close();
+    } catch (_error) {
+      // ignore
+    } finally {
+      subtitlesDbPromise = null;
+    }
+  }
+  await deleteDB(SUBTITLE_DB_NAME);
+}
+
 // Singleton FFmpeg instance
 class FFmpegSingleton {
   private static instance: FFmpeg | null = null;
@@ -110,7 +153,8 @@ export class IndexedDBBucket implements Bucket {
     readonly audioLength: number,
     readonly id: string
   ) {
-    this.fileName = (filenamify(id) ?? "file").normalize("NFC");
+    const base = id.endsWith(".mp4") ? id.slice(0, -4) : id;
+    this.fileName = (filenamify(base) ?? "file").normalize("NFC");
   }
 
   async cleanup() {
@@ -248,33 +292,38 @@ export class IndexedDBBucket implements Bucket {
 
     const ffmpeg = await FFmpegSingleton.getInstance();
 
-    ffmpeg.on("log", ({ message }) => console.log(message));
+    const subtitle = await getSubtitleText(this.id);
+    const includeSubtitles = subtitle !== undefined;
+    // write somewhere predictable (avoid path/punctuation issues)
+    const outputFileName = includeSubtitles ? "output.mkv" : "output.mp4";
 
-    // write somewhere predictable
-    const outputFileName = `/tmp/${this.fileName}.mp4`;
+    const videoBlob =
+      this.videoLength > 0
+        ? await this.concatenateChunks(0, this.videoLength)
+        : undefined;
+    const audioBlob =
+      this.audioLength > 0
+        ? await this.concatenateChunks(this.videoLength, this.audioLength)
+        : undefined;
 
-    // Process based on available streams
-    if (this.videoLength > 0 && this.audioLength > 0) {
-      await this.processVideoAndAudio(ffmpeg, outputFileName, onProgress);
-    } else if (this.videoLength > 0) {
-      await this.processVideoOnly(ffmpeg, outputFileName, onProgress);
-    } else {
-      await this.processAudioOnly(ffmpeg, outputFileName, onProgress);
-    }
-
-    // Check if the output file exists before trying to read it
     try {
-      const data = await ffmpeg.readFile(outputFileName);
+      const result = await muxStreams({
+        ffmpeg,
+        outputFileName,
+        videoBlob,
+        audioBlob,
+        subtitleText: subtitle?.text,
+        subtitleLanguage: subtitle?.language,
+      });
       onProgress?.(1, "Done");
-      return new Blob([data], { type: "video/mp4" });
+      return result.blob;
     } catch (error) {
-      console.error(`Failed to read output file ${outputFileName}:`, error);
+      console.error(`Muxing failed for ${outputFileName}:`, error);
       throw new Error(
-        `Output file ${outputFileName} was not created by FFmpeg`
+        `Muxing failed (output file missing). Check audio/subtitle tracks and try again.`
       );
     }
   }
-
   // Helper function to read chunks by index to avoid transaction timeout
   private async readChunkByIndex(
     chunkIndex: number
@@ -308,123 +357,6 @@ export class IndexedDBBucket implements Bucket {
 
     return new Blob(chunks);
   }
-
-  private async processVideoAndAudio(
-    ffmpeg: FFmpeg,
-    outputFileName: string,
-    onProgress?: (progress: number, message: string) => void
-  ) {
-    onProgress?.(0.1, "Concatenating video chunks");
-    const videoBlob = await this.concatenateChunks(0, this.videoLength);
-
-    onProgress?.(0.3, "Concatenating audio chunks");
-    const audioBlob = await this.concatenateChunks(
-      this.videoLength,
-      this.audioLength
-    );
-
-    onProgress?.(0.5, "Writing video stream");
-    await ffmpeg.writeFile("video.ts", await fetchFile(videoBlob));
-
-    onProgress?.(0.6, "Writing audio stream");
-    await ffmpeg.writeFile("audio.ts", await fetchFile(audioBlob));
-
-    onProgress?.(0.7, "Merging video and audio");
-    await ffmpeg.exec([
-      "-y",
-      "-i",
-      "video.ts",
-      "-i",
-      "audio.ts",
-      "-c:v",
-      "copy",
-      "-c:a",
-      "copy",
-      "-bsf:a",
-      "aac_adtstoasc",
-      "-shortest",
-      "-movflags",
-      "+faststart",
-      outputFileName,
-    ]);
-
-    // Cleanup intermediate files
-    try {
-      await ffmpeg.deleteFile("video.ts");
-      await ffmpeg.deleteFile("audio.ts");
-    } catch (error) {
-      // Files may not exist, ignore error
-    }
-  }
-
-  private async processVideoOnly(
-    ffmpeg: FFmpeg,
-    outputFileName: string,
-    onProgress?: (progress: number, message: string) => void
-  ) {
-    onProgress?.(0.2, "Concatenating video chunks");
-    const videoBlob = await this.concatenateChunks(0, this.videoLength);
-
-    onProgress?.(0.5, "Writing video stream");
-    await ffmpeg.writeFile("video.ts", await fetchFile(videoBlob));
-
-    onProgress?.(0.7, "Transcoding video");
-    await ffmpeg.exec([
-      "-y",
-      "-i",
-      "video.ts",
-      "-c:v",
-      "copy",
-      "-movflags",
-      "+faststart",
-      outputFileName,
-    ]);
-
-    // Cleanup intermediate files
-    try {
-      await ffmpeg.deleteFile("video.ts");
-    } catch (error) {
-      // Files may not exist, ignore error
-    }
-  }
-
-  private async processAudioOnly(
-    ffmpeg: FFmpeg,
-    outputFileName: string,
-    onProgress?: (progress: number, message: string) => void
-  ) {
-    onProgress?.(0.2, "Concatenating audio chunks");
-    const audioBlob = await this.concatenateChunks(
-      this.videoLength,
-      this.audioLength
-    );
-
-    onProgress?.(0.5, "Writing audio stream");
-    await ffmpeg.writeFile("audio.ts", await fetchFile(audioBlob));
-
-    onProgress?.(0.7, "Transcoding audio");
-    await ffmpeg.exec([
-      "-y",
-      "-i",
-      "audio.ts",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "192k",
-      "-af",
-      "aresample=async=1:first_pts=0",
-      "-movflags",
-      "+faststart",
-      outputFileName,
-    ]);
-
-    // Cleanup intermediate files
-    try {
-      await ffmpeg.deleteFile("audio.ts");
-    } catch (error) {
-      // Files may not exist, ignore error
-    }
-  }
 }
 
 const cleanup: IFS["cleanup"] = async function () {
@@ -445,6 +377,7 @@ const cleanup: IFS["cleanup"] = async function () {
   for (const id of Object.keys(buckets)) {
     delete buckets[id];
   }
+  await deleteSubtitlesDb();
 };
 
 const createBucket: IFS["createBucket"] = async function (
@@ -458,13 +391,31 @@ const createBucket: IFS["createBucket"] = async function (
 };
 
 const deleteBucket: IFS["deleteBucket"] = async function (id: string) {
-  const bucket = await getBucket(id);
-  if (bucket) {
-    await bucket.deleteDB();
+  try {
+    const bucket = await getBucket(id);
+    if (bucket) {
+      await bucket.deleteDB();
+    } else {
+      // Best-effort delete even if metadata is missing
+      try {
+        await deleteDB(id);
+      } catch (_error) {
+        // ignore
+      }
+    }
+  } finally {
+    delete buckets[id];
+    try {
+      await deleteBucketMeta(id);
+    } catch (_error) {
+      // ignore
+    }
+    try {
+      await deleteSubtitleText(id);
+    } catch (_error) {
+      // ignore
+    }
   }
-  delete buckets[id];
-  await deleteBucketMeta(id);
-  return Promise.resolve();
 };
 
 const getBucket: IFS["getBucket"] = async function (id: string) {
@@ -512,6 +463,8 @@ export const IndexedDBFS: IFS = {
   deleteBucket,
   saveAs,
   cleanup,
+  setSubtitleText,
+  getSubtitleText,
 };
 
 function shouldUseOffscreen() {
@@ -540,7 +493,11 @@ async function ensureOffscreenDocument() {
 }
 
 async function requestObjectUrlOffscreen(
-  payload: { bucketId: string; videoLength: number; audioLength: number },
+  payload: {
+    bucketId: string;
+    videoLength: number;
+    audioLength: number;
+  },
   onProgress?: (progress: number, message: string) => void
 ) {
   await ensureOffscreenDocument();
@@ -595,3 +552,33 @@ function getStorageArea() {
 function getDownloadsApi() {
   return browserApi?.downloads ?? chromeApi?.downloads;
 }
+
+async function setSubtitleText(
+  id: string,
+  subtitle: { text: string; language?: string; name?: string }
+) {
+  const db = await getSubtitlesDb();
+  await db.put(SUBTITLE_STORE_NAME, { ...subtitle, id });
+}
+
+async function getSubtitleText(
+  id: string
+): Promise<{ text: string; language?: string; name?: string } | undefined> {
+  const db = await getSubtitlesDb();
+  const record = await db.get(SUBTITLE_STORE_NAME, id);
+  const hit = record
+    ? {
+        text: record.text,
+        language: record.language,
+        name: record.name,
+      }
+    : undefined;
+  return hit;
+}
+
+async function deleteSubtitleText(id: string) {
+  const db = await getSubtitlesDb();
+  await db.delete(SUBTITLE_STORE_NAME, id);
+}
+
+export { setSubtitleText, getSubtitleText };

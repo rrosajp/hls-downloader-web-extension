@@ -20,6 +20,16 @@
 
 ---
 
+## 📖 Table of Contents
+- [Features](#-features)
+- [Get It](#-get-it)
+- [Installation](#️-installation)
+- [Usage](#-usage)
+- [Development](#-development)
+- [Contribution](#-contributing)
+- [Code of Conduct](#-code-of-conduct)
+- [License](#-license)
+
 ## ✨ Features
 
 * **Automatic stream discovery**
@@ -65,24 +75,28 @@
 </details>
 
 ### <img src="https://upload.wikimedia.org/wikipedia/commons/e/e1/Google_Chrome_icon_%28February_2022%29.svg" height="14" alt="Google Chrome logo" /> Chrome
-Currently not supported
+1. Download `extension-mv3-chrome.zip` from the [latest release](https://github.com/puemos/hls-downloader/releases).  
+2. Extract the ZIP to a convenient folder.  
+3. Open `chrome://extensions/` and enable **Developer mode**.  
+4. Click **Load unpacked** and select the **extracted folder** (the one that contains `manifest.json`).  
+5. Enjoy 🎉
 
 ### <img src="https://upload.wikimedia.org/wikipedia/commons/9/9d/Brave_lion_icon.svg" height="14" alt="Brave logo" /> Brave
-1. Download `extension-chrome.zip` from the [latest release](https://github.com/puemos/hls-downloader/releases).  
+1. Download `extension-mv3-chrome.zip` from the [latest release](https://github.com/puemos/hls-downloader/releases).  
 2. Extract the ZIP to a convenient folder.  
 3. Open `brave://extensions/` and enable **Developer mode**.  
 4. Click **Load unpacked** and select the **extracted folder** (the one that contains `manifest.json`).  
 5. Enjoy 🎉
 
 ### <img src="https://upload.wikimedia.org/wikipedia/commons/3/37/Arc_%28browser%29_logo.svg" height="14" alt="Arc logo" /> Arc
-1. Download `extension-chrome.zip` from the [latest release](https://github.com/puemos/hls-downloader/releases).  
+1. Download `extension-mv3-chrome.zip` from the [latest release](https://github.com/puemos/hls-downloader/releases).  
 2. Extract the ZIP to a convenient folder.  
 3. Open **Arc Menu → Extensions → Manage Extensions** (or press **Command+T** or **Ctrl+T** and type **Manage Extensions**), then enable **Developer mode**.  
 4. Click **Load unpacked** and select the **extracted folder** (the one that contains `manifest.json`).  
 5. Enjoy 🎉
 
 ### <img src="https://upload.wikimedia.org/wikipedia/commons/4/49/Opera_2015_icon.svg" height="14" alt="Opera logo" /> Opera
-1. Download `extension-chrome.zip` from the [latest release](https://github.com/puemos/hls-downloader/releases).  
+1. Download `extension-mv3-chrome.zip` from the [latest release](https://github.com/puemos/hls-downloader/releases).  
 2. Extract the ZIP to a convenient folder.  
 3. Open `opera://extensions/` and enable **Developer mode**.  
 4. Click **Load unpacked** and select the **extracted folder** (the one that contains `manifest.json`).  
@@ -191,6 +205,55 @@ git push origin feature/my-awesome-idea
 
 **TLDR: Be kind**
 This project follows the [Contributor Covenant](./CODE_OF_CONDUCT.md).
+
+---
+
+## 🚧 Build Variants
+
+HLS Downloader is available in multiple build variants to accommodate different distribution requirements:
+
+### Store Builds (Firefox Add-ons / Edge Add-ons)
+Official store releases include a blocklist that respects copyright holder opt-out requests. This version complies with distribution platform policies and content owner preferences.
+
+### Independent Builds  
+Alternative builds are available for advanced users who prefer complete local control. These "experimental" variants contain no blocklist and allow unrestricted operation:
+
+```bash
+# MV2 without blocklist (Firefox/Edge manual install)
+pnpm run build:mv2:no-blocklist
+
+# MV3 without blocklist (Chrome/Brave/Arc manual install)
+pnpm run build:mv3:no-blocklist
+
+# Build all variants at once
+pnpm run build:all-variants
+```
+
+Non-blocklist builds are named "experimental unstable nightly beta alpha hls-downloader" and are intended for personal use only—not for redistribution on official stores.
+
+---
+
+## 🤚 Disclaimer
+
+This extension is designed for downloading video content that you own or have authorization to access. **It is prohibited to use this tool for downloading copyrighted content without permission.** Users are solely responsible for their actions, and the developer assumes no liability for user behavior. This tool is provided "as-is" without warranty of any kind.
+
+---
+
+## 🚫 Copyright Protection and Opt-Out Policy
+
+We respect the intellectual property rights and legitimate interests of all websites and content operators.
+
+If you do not wish this tool to operate on your website, you may submit an opt-out request. We will add verified domains to the project's blocklist in subsequent releases.
+
+### How to Submit an Opt-Out Request
+
+1. Create a new **[Issue](https://github.com/puemos/hls-downloader/issues/new?template=opt-out-request.yml)** using the "Opt-Out Request" template  
+2. Use the title format: `[Opt-Out Request] YourDomain.com`  
+3. Provide the following information for verification:
+   - **Website Domain** (e.g., `example.com`)  
+   - **Contact Email** (for identity verification if necessary)
+
+We commit to honoring legitimate requests and will include verified domains in the blocklist for store-distributed versions. Please note that as an open-source project, update cycles may vary. Thank you for your understanding and cooperation.
 
 ---
 

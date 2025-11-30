@@ -30,7 +30,7 @@ describe("jobs slice", () => {
 
       expect(nextState.jobs["job1"]).toEqual(job);
       expect(nextState.jobsStatus["job1"]).toBeDefined();
-      expect(nextState.jobsStatus["job1"]?.status).toBe("downloading");
+      expect(nextState.jobsStatus["job1"]?.status).toBe("queued");
       expect(nextState.jobsStatus["job1"]?.total).toBe(
         job.videoFragments.length + job.audioFragments.length
       );
@@ -62,6 +62,64 @@ describe("jobs slice", () => {
       );
 
       expect(nextState.jobsStatus["job1"]?.total).toBe(5); // 2 video + 3 audio
+    });
+  });
+
+  describe("queue action", () => {
+    it("should move a job to queued and reset progress", () => {
+      const job = createTestJob({ id: "job1" });
+      let state = {
+        jobs: { job1: job },
+        jobsStatus: {
+          job1: {
+            status: "error" as const,
+            total: 5,
+            done: 3,
+            saveProgress: 0.5,
+            saveMessage: "message",
+            errorMessage: "failed",
+          },
+        },
+      };
+
+      state = jobsSlice.reducer(
+        state,
+        jobsSlice.actions.queue({ jobId: "job1" })
+      );
+
+      expect(state.jobsStatus["job1"]?.status).toBe("queued");
+      expect(state.jobsStatus["job1"]?.done).toBe(0);
+      expect(state.jobsStatus["job1"]?.saveProgress).toBe(0);
+      expect(state.jobsStatus["job1"]?.errorMessage).toBeUndefined();
+    });
+  });
+
+  describe("download action", () => {
+    it("should set a queued job to downloading and reset counters", () => {
+      const job = createTestJob({ id: "job1" });
+      let state = {
+        jobs: { job1: job },
+        jobsStatus: {
+          job1: {
+            status: "queued" as const,
+            total: 5,
+            done: 2,
+            saveProgress: 0.4,
+          },
+        },
+      };
+
+      state = jobsSlice.reducer(
+        state,
+        jobsSlice.actions.download({ jobId: "job1" })
+      );
+
+      expect(state.jobsStatus["job1"]?.status).toBe("downloading");
+      expect(state.jobsStatus["job1"]?.done).toBe(0);
+      expect(state.jobsStatus["job1"]?.saveProgress).toBe(0);
+      expect(state.jobsStatus["job1"]?.total).toBe(
+        job.videoFragments.length + job.audioFragments.length
+      );
     });
   });
 
